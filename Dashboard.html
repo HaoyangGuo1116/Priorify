@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Priorify - Dashboard</title>
+    <link rel="stylesheet" href="style.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <!-- Header with User Menu -->
+    <header class="dashboard-header">
+      <h1 class="dashboard-title">Priorify</h1>
+      <div class="user-menu-container">
+        <button
+          class="user-menu-button"
+          id="userMenuButton"
+          onclick="toggleUserMenu()"
+        >
+          <span id="userName">User</span>
+          <span class="dropdown-arrow">▼</span>
+        </button>
+        <div class="user-menu-dropdown" id="userMenuDropdown">
+          <a href="#" class="menu-item" onclick="handleProfile()">Profile</a>
+          <a href="#" class="menu-item" onclick="handleSignOut()">Sign out</a>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Dashboard Container -->
+    <div class="dashboard-container">
+      <!-- Left Panel: Task List -->
+      <div class="task-panel">
+        <div class="panel-header">
+          <h2>Tasks</h2>
+          <button class="primary-button" onclick="openCreateTaskModal()">
+            Create Task
+          </button>
+        </div>
+        <div class="task-list" id="taskList">
+          <!-- Tasks will be dynamically inserted here -->
+        </div>
+      </div>
+
+      <!-- Right Panel: Calendar -->
+      <div class="calendar-panel">
+        <div class="calendar-header">
+          <div class="calendar-title-section">
+            <button
+              class="nav-button"
+              id="prevButton"
+              onclick="navigateCalendar(-1)"
+            >
+              ‹
+            </button>
+            <h2 id="calendarTitle">January 2024</h2>
+            <button
+              class="nav-button"
+              id="nextButton"
+              onclick="navigateCalendar(1)"
+            >
+              ›
+            </button>
+          </div>
+          <div class="view-switcher">
+            <button
+              class="view-button active"
+              id="monthViewButton"
+              onclick="switchView('month')"
+            >
+              Month
+            </button>
+            <button
+              class="view-button"
+              id="weekViewButton"
+              onclick="switchView('week')"
+            >
+              Week
+            </button>
+            <button
+              class="view-button"
+              id="dayViewButton"
+              onclick="switchView('day')"
+            >
+              Day
+            </button>
+          </div>
+        </div>
+        <div class="calendar-container" id="calendarContainer">
+          <!-- Calendar will be dynamically rendered here -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Create Task Modal -->
+    <div
+      class="modal-overlay"
+      id="modalOverlay"
+      onclick="closeCreateTaskModal()"
+    >
+      <div class="modal-content" onclick="event.stopPropagation()">
+        <div class="modal-header">
+          <h2>Create Task</h2>
+          <button class="modal-close" onclick="closeCreateTaskModal()">
+            ×
+          </button>
+        </div>
+        <form id="createTaskForm" onsubmit="handleCreateTask(event)">
+          <div class="form-group">
+            <label for="taskTitle">Task Title *</label>
+            <input
+              type="text"
+              id="taskTitle"
+              name="title"
+              required
+              placeholder="Enter task title"
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="taskDescription">Description (optional)</label>
+            <textarea
+              id="taskDescription"
+              name="description"
+              rows="3"
+              placeholder="Enter task description"
+            ></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="taskDueDate">Due Date *</label>
+            <input type="date" id="taskDueDate" name="dueDate" required />
+          </div>
+
+          <div class="form-group">
+            <label for="taskPriority">Priority *</label>
+            <select id="taskPriority" name="priority" required>
+              <option value="Low">Low</option>
+              <option value="Medium" selected>Medium</option>
+              <option value="High">High</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="taskTag">Tag</label>
+            <select id="taskTag" name="tag">
+              <option value="">None</option>
+              <option value="@home">@home</option>
+              <option value="@commute">@commute</option>
+              <option value="@laptop">@laptop</option>
+              <option value="@outside">@outside</option>
+              <option value="@school">@school</option>
+            </select>
+          </div>
+
+          <div class="modal-actions">
+            <button
+              type="button"
+              class="secondary-button"
+              onclick="closeCreateTaskModal()"
+            >
+              Cancel
+            </button>
+            <button type="submit" class="primary-button">Save Task</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script type="module" src="dashboard.js"></script>
+  </body>
+</html>

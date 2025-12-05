@@ -1,8 +1,20 @@
-import { auth } from "./firebaseConfig.js";
+import { auth, db } from "./firebaseConfig.js";
 import {
   onAuthStateChanged,
   signOut,
 } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
+import {
+  collection,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
+  query,
+  where,
+  getDocs,
+  onSnapshot,
+  serverTimestamp,
+} from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
 
 // Global state
 let currentUser = null;
@@ -13,7 +25,6 @@ let currentView = "month";
 // Initialize dashboard
 document.addEventListener("DOMContentLoaded", () => {
   checkAuth();
-  loadTasks();
   initializeCalendar();
   setupDragAndDrop();
 });
@@ -29,88 +40,134 @@ function checkAuth() {
       currentUser = user;
       const userNameElement = document.getElementById("userName");
       userNameElement.textContent = user.displayName || user.email || "User";
-      renderTasks();
-      renderCalendar();
+      // Load tasks from Firestore
+      loadTasksFromFirestore();
     }
   });
 }
 
-// Task Management
-function loadTasks() {
-  const savedTasks = localStorage.getItem(
-    `tasks_${auth.currentUser?.uid || "default"}`
-  );
-  if (savedTasks) {
-    tasks = JSON.parse(savedTasks);
+// Task Management with Firestore
+function loadTasksFromFirestore() {
+  if (!currentUser) return;
+
+  const tasksRef = collection(db, "tasks");
+  const q = query(tasksRef, where("userId", "==", currentUser.uid));
+
+  // Set up real-time listener for tasks
+  onSnapshot(q, (snapshot) => {
+    tasks = [];
+    snapshot.forEach((docSnap) => {
+      const taskData = docSnap.data();
+      tasks.push({
+        id: docSnap.id,
+        ...taskData,
+      });
+    });
+    renderTasks();
+    renderCalendar();
+  });
+}
+
+async function saveTaskToFirestore(task) {
+  if (!currentUser) return null;
+
+  try {
+    const tasksRef = collection(db, "tasks");
+    const taskData = {
+      ...task,
+      userId: currentUser.uid,
+      createdAt: task.createdAt || serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+    const docRef = await addDoc(tasksRef, taskData);
+    return docRef.id;
+  } catch (error) {
+    console.error("Error saving task to Firestore:", error);
+    alert("Failed to save task. Please try again.");
+    return null;
   }
 }
 
-function saveTasks() {
-  if (currentUser) {
-    localStorage.setItem(`tasks_${currentUser.uid}`, JSON.stringify(tasks));
+async function updateTaskInFirestore(taskId, updates) {
+  if (!currentUser) return;
+
+  try {
+    const taskRef = doc(db, "tasks", taskId);
+    await updateDoc(taskRef, {
+      ...updates,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    console.error("Error updating task in Firestore:", error);
+    alert("Failed to update task. Please try again.");
   }
 }
 
-function addTask(taskData) {
-  // Calculate scheduledDate from reminder time if provided
-  let scheduledDate = null;
-  if (taskData.reminderDate && taskData.reminderTime) {
-    const reminderDateTime = new Date(
-      `${taskData.reminderDate}T${taskData.reminderTime}`
-    );
-    scheduledDate = reminderDateTime.toISOString();
-  } else if (taskData.reminderDate) {
-    // If only date is provided, set to 9 AM by default
-    const reminderDateTime = new Date(`${taskData.reminderDate}T09:00`);
-    scheduledDate = reminderDateTime.toISOString();
+async function deleteTaskFromFirestore(taskId) {
+  if (!currentUser) return;
+
+  try {
+    const taskRef = doc(db, "tasks", taskId);
+    await deleteDoc(taskRef);
+  } catch (error) {
+    console.error("Error deleting task from Firestore:", error);
+    alert("Failed to delete task. Please try again.");
   }
+}
+
+async function addTask(taskData) {
+  if (!currentUser) {
+    alert("Please log in to create tasks.");
+    return;
+  }
+
+  // Use the single date and time input for both due date and reminder/scheduled time
+  const dateTime = new Date(`${taskData.taskDate}T${taskData.taskTime}`);
+  const scheduledDate = dateTime.toISOString();
+  const dueDate = taskData.taskDate; // Store just the date for due date
 
   const task = {
-    id: Date.now().toString(),
     title: taskData.title,
     description: taskData.description || "",
-    dueDate: taskData.dueDate,
+    dueDate: dueDate, // Due date (just the date part)
     priority: taskData.priority,
     tag: taskData.tag || "",
-    scheduledDate: scheduledDate,
-    reminderTime:
-      taskData.reminderDate && taskData.reminderTime
-        ? new Date(
-            `${taskData.reminderDate}T${taskData.reminderTime}`
-          ).toISOString()
-        : null,
+    scheduledDate: scheduledDate, // Full date-time for calendar scheduling
+    reminderTime: scheduledDate, // Same as scheduledDate - the reminder time
     completed: false,
     createdAt: new Date().toISOString(),
   };
-  tasks.push(task);
-  saveTasks();
-  renderTasks();
-  renderCalendar();
+
+  // Save to Firestore - the real-time listener will update the UI
+  await saveTaskToFirestore(task);
 }
 
-function removeTask(taskId) {
-  tasks = tasks.filter((t) => t.id !== taskId);
-  saveTasks();
-  renderTasks();
-  renderCalendar();
+async function removeTask(taskId) {
+  if (!currentUser) return;
+
+  // Delete from Firestore - the real-time listener will update the UI
+  await deleteTaskFromFirestore(taskId);
 }
 
-function updateTaskSchedule(taskId, scheduledDate) {
+async function updateTaskSchedule(taskId, scheduledDate) {
+  if (!currentUser) return;
+
+  // Update in Firestore - the real-time listener will update the UI
+  await updateTaskInFirestore(taskId, {
+    scheduledDate: scheduledDate,
+    reminderTime: scheduledDate,
+  });
+}
+
+async function toggleTaskComplete(taskId) {
+  if (!currentUser) return;
+
   const task = tasks.find((t) => t.id === taskId);
   if (task) {
-    task.scheduledDate = scheduledDate;
-    saveTasks();
-    renderCalendar();
-  }
-}
-
-function toggleTaskComplete(taskId) {
-  const task = tasks.find((t) => t.id === taskId);
-  if (task) {
-    task.completed = !task.completed;
-    saveTasks();
-    renderTasks();
-    renderCalendar();
+    // Update in Firestore - the real-time listener will update the UI
+    await updateTaskInFirestore(taskId, {
+      completed: !task.completed,
+    });
   }
 }
 
@@ -155,9 +212,14 @@ function createTaskCard(task) {
       <h3 class="task-title ${
         isCompleted ? "completed-text" : ""
       }">${escapeHtml(task.title)}</h3>
-      <button class="delete-task" onclick="handleDeleteTask('${
-        task.id
-      }')" title="Delete task">×</button>
+      <div class="task-card-actions">
+        <button class="view-details-button" onclick="event.stopPropagation(); showTaskDetails('${
+          task.id
+        }')" title="View details">👁️</button>
+        <button class="delete-task" onclick="event.stopPropagation(); handleDeleteTask('${
+          task.id
+        }')" title="Delete task">×</button>
+      </div>
     </div>
     <div class="task-card-body">
       <div class="task-meta">
@@ -178,10 +240,12 @@ function createTaskCard(task) {
 
   // Click to toggle completion
   card.addEventListener("click", (e) => {
-    // Don't toggle if clicking on delete button
+    // Don't toggle if clicking on buttons
     if (
       !e.target.classList.contains("delete-task") &&
-      !e.target.closest(".delete-task")
+      !e.target.closest(".delete-task") &&
+      !e.target.classList.contains("view-details-button") &&
+      !e.target.closest(".view-details-button")
     ) {
       toggleTaskComplete(task.id);
     }
@@ -366,14 +430,19 @@ function createDayCell(year, month, day) {
 }
 
 function renderTasksInCell(cell, year, month, day) {
+  // Create a date object for the cell day (at midnight)
+  const cellDate = new Date(year, month, day);
+
+  // Filter tasks that have scheduledDate or reminderTime matching this cell's day
   const scheduledTasks = tasks.filter((task) => {
-    if (!task.scheduledDate) return false;
-    const scheduled = new Date(task.scheduledDate);
-    return (
-      scheduled.getFullYear() === year &&
-      scheduled.getMonth() === month &&
-      scheduled.getDate() === day
-    );
+    // Prefer reminderTime if available, otherwise use scheduledDate
+    const dateToCheck = task.reminderTime || task.scheduledDate;
+    if (!dateToCheck) return false;
+
+    const scheduled = new Date(dateToCheck);
+
+    // Use isSameDay function to ensure accurate date comparison
+    return isSameDay(scheduled, cellDate);
   });
 
   scheduledTasks.forEach((task) => {
@@ -399,24 +468,37 @@ function renderTasksInCell(cell, year, month, day) {
 }
 
 function renderTasksInDayView(container, year, month, day) {
+  // Create a date object for the current day being viewed (at midnight)
+  const currentDayDate = new Date(year, month, day);
+
+  // Filter tasks that have scheduledDate or reminderTime matching the current day
   const scheduledTasks = tasks.filter((task) => {
-    if (!task.scheduledDate) return false;
-    const scheduled = new Date(task.scheduledDate);
-    return (
-      scheduled.getFullYear() === year &&
-      scheduled.getMonth() === month &&
-      scheduled.getDate() === day
-    );
+    // Prefer reminderTime if available, otherwise use scheduledDate
+    const dateToCheck = task.reminderTime || task.scheduledDate;
+    if (!dateToCheck) return false;
+
+    // Create date object from task's scheduled/reminder time
+    const scheduled = new Date(dateToCheck);
+
+    // Use isSameDay function to ensure accurate date comparison
+    // This ensures tasks only show on the exact day they are scheduled
+    return isSameDay(scheduled, currentDayDate);
   });
 
-  // Tasks would be positioned by hour in day view
-  // For now, we'll add them to the appropriate time slot
+  // Position tasks by hour (rounded down to nearest hour)
   scheduledTasks.forEach((task) => {
-    const scheduled = new Date(task.scheduledDate);
-    const hour = scheduled.getHours();
+    // Use reminderTime if available, otherwise use scheduledDate
+    const dateToUse = task.reminderTime || task.scheduledDate;
+    const scheduled = new Date(dateToUse);
+
+    // Down round to nearest hour (e.g., 4:50 -> 4, 4:30 -> 4, 4:59 -> 4)
+    // Since day view only shows hourly slots, we round down to the nearest hour
+    const hour = scheduled.getHours(); // Already an integer 0-23, ignores minutes
+    const roundedHour = Math.max(0, Math.min(23, hour));
+
     // Find the dropzone with matching hour attribute
     const dropzone = container.querySelector(
-      `.day-cell-dropzone[data-hour="${hour}"]`
+      `.day-cell-dropzone[data-hour="${roundedHour}"]`
     );
     if (dropzone) {
       const taskBlock = document.createElement("div");
@@ -425,7 +507,13 @@ function renderTasksInDayView(container, year, month, day) {
         isCompleted ? "task-completed-calendar" : ""
       }`;
       taskBlock.textContent = task.title;
-      taskBlock.title = `${task.title} - ${task.priority}${
+
+      // Show the actual reminder time in tooltip
+      const actualTime = scheduled.toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      taskBlock.title = `${task.title} - ${task.priority} - ${actualTime}${
         isCompleted ? " (Completed)" : ""
       }`;
       taskBlock.dataset.taskId = task.id;
@@ -556,16 +644,15 @@ window.openCreateTaskModal = function () {
   modal.style.display = "flex";
   document.body.style.overflow = "hidden";
 
-  // Set today as default due date
+  // Set today as default date
   const today = new Date().toISOString().split("T")[0];
-  document.getElementById("taskDueDate").value = today;
+  document.getElementById("taskDate").value = today;
 
-  // Set today as default reminder date and current time + 1 hour as default reminder time
-  document.getElementById("taskReminderDate").value = today;
+  // Set current time + 1 hour as default time
   const oneHourLater = new Date();
   oneHourLater.setHours(oneHourLater.getHours() + 1);
   const timeString = oneHourLater.toTimeString().slice(0, 5);
-  document.getElementById("taskReminderTime").value = timeString;
+  document.getElementById("taskTime").value = timeString;
 };
 
 window.closeCreateTaskModal = function () {
@@ -581,9 +668,8 @@ window.handleCreateTask = function (event) {
   const formData = {
     title: document.getElementById("taskTitle").value,
     description: document.getElementById("taskDescription").value,
-    dueDate: document.getElementById("taskDueDate").value,
-    reminderDate: document.getElementById("taskReminderDate").value,
-    reminderTime: document.getElementById("taskReminderTime").value,
+    taskDate: document.getElementById("taskDate").value,
+    taskTime: document.getElementById("taskTime").value,
     priority: document.getElementById("taskPriority").value,
     tag: document.getElementById("taskTag").value,
   };
@@ -596,6 +682,111 @@ window.handleDeleteTask = function (taskId) {
   if (confirm("Are you sure you want to delete this task?")) {
     removeTask(taskId);
   }
+};
+
+// Task Details Functions
+window.showTaskDetails = function (taskId) {
+  const task = tasks.find((t) => t.id === taskId);
+  if (!task) return;
+
+  const modal = document.getElementById("taskDetailsModal");
+  const titleElement = document.getElementById("taskDetailsTitle");
+  const contentElement = document.getElementById("taskDetailsContent");
+
+  titleElement.textContent = task.title;
+
+  // Format dates
+  const dueDate = new Date(task.dueDate);
+  const formattedDueDate = dueDate.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  let scheduledInfo = "Not scheduled";
+  if (task.reminderTime || task.scheduledDate) {
+    const scheduledDate = new Date(task.reminderTime || task.scheduledDate);
+    scheduledInfo = scheduledDate.toLocaleString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
+  const createdAt = new Date(task.createdAt);
+  const formattedCreatedAt = createdAt.toLocaleString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  const priorityClass = `priority-${task.priority.toLowerCase()}`;
+  const statusText = task.completed ? "Completed ✓" : "Pending";
+  const statusClass = task.completed
+    ? "task-status-completed"
+    : "task-status-pending";
+
+  contentElement.innerHTML = `
+    <div class="task-detail-section">
+      <label>Status</label>
+      <div class="task-detail-value ${statusClass}">${statusText}</div>
+    </div>
+
+    <div class="task-detail-section">
+      <label>Description</label>
+      <div class="task-detail-value">${
+        task.description || "No description provided"
+      }</div>
+    </div>
+
+    <div class="task-detail-section">
+      <label>Due Date</label>
+      <div class="task-detail-value">${formattedDueDate}</div>
+    </div>
+
+    <div class="task-detail-section">
+      <label>Scheduled Time</label>
+      <div class="task-detail-value">${scheduledInfo}</div>
+    </div>
+
+    <div class="task-detail-section">
+      <label>Priority</label>
+      <div class="task-detail-value">
+        <span class="task-priority ${priorityClass}">${task.priority}</span>
+      </div>
+    </div>
+
+    ${
+      task.tag
+        ? `
+    <div class="task-detail-section">
+      <label>Tag</label>
+      <div class="task-detail-value">
+        <span class="task-tag">${escapeHtml(task.tag)}</span>
+      </div>
+    </div>
+    `
+        : ""
+    }
+
+    <div class="task-detail-section">
+      <label>Created At</label>
+      <div class="task-detail-value">${formattedCreatedAt}</div>
+    </div>
+  `;
+
+  modal.style.display = "flex";
+  document.body.style.overflow = "hidden";
+};
+
+window.closeTaskDetailsModal = function () {
+  const modal = document.getElementById("taskDetailsModal");
+  modal.style.display = "none";
+  document.body.style.overflow = "";
 };
 
 // User Menu Functions
@@ -612,7 +803,7 @@ window.handleProfile = function () {
 window.handleSignOut = async function () {
   try {
     await signOut(auth);
-    window.location.href = "Login.html";
+    window.location.href = "index.html";
   } catch (error) {
     console.error("Error signing out:", error);
     alert("Error signing out. Please try again.");

@@ -133,29 +133,26 @@
           </div>
 
           <div class="form-group">
-            <label for="taskDueDate">Due Date *</label>
-            <input type="date" id="taskDueDate" name="dueDate" required />
-          </div>
-
-          <div class="form-group">
-            <label for="taskReminderTime">Reminder Time (optional)</label>
-            <div class="reminder-time-group">
+            <label for="taskDateTime">Date & Time *</label>
+            <div class="date-time-group">
               <input
                 type="date"
-                id="taskReminderDate"
-                name="reminderDate"
+                id="taskDate"
+                name="taskDate"
+                required
                 placeholder="Date"
               />
               <input
                 type="time"
-                id="taskReminderTime"
-                name="reminderTime"
+                id="taskTime"
+                name="taskTime"
+                required
                 placeholder="Time"
               />
             </div>
             <p class="form-hint">
-              If set, the task will be automatically added to the calendar at
-              the specified time.
+              The task will be added to the calendar at the specified date and
+              time.
             </p>
           </div>
 
@@ -191,6 +188,34 @@
             <button type="submit" class="primary-button">Save Task</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <!-- Task Details Modal -->
+    <div
+      class="modal-overlay"
+      id="taskDetailsModal"
+      onclick="closeTaskDetailsModal()"
+    >
+      <div class="modal-content" onclick="event.stopPropagation()">
+        <div class="modal-header">
+          <h2 id="taskDetailsTitle">Task Details</h2>
+          <button class="modal-close" onclick="closeTaskDetailsModal()">
+            ×
+          </button>
+        </div>
+        <div class="task-details-content" id="taskDetailsContent">
+          <!-- Task details will be dynamically inserted here -->
+        </div>
+        <div class="modal-actions">
+          <button
+            type="button"
+            class="secondary-button"
+            onclick="closeTaskDetailsModal()"
+          >
+            Close
+          </button>
+        </div>
       </div>
     </div>
 

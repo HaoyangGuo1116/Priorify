@@ -1,8 +1,14 @@
-import { auth } from "./firebaseConfig.js";
+import { auth, db } from "./firebaseConfig.js";
 import {
   onAuthStateChanged,
   signOut,
 } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+} from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
 
 // Initialize profile page
 document.addEventListener("DOMContentLoaded", () => {
@@ -37,13 +43,20 @@ function loadUserInfo(user) {
 }
 
 // Load user statistics
-function loadStatistics(user) {
-  // Load tasks from localStorage
-  const savedTasks = localStorage.getItem(`tasks_${user.uid}`);
-  let tasks = [];
+async function loadStatistics(user) {
+  // Load tasks from Firestore
+  const tasksRef = collection(db, "tasks");
+  const q = query(tasksRef, where("userId", "==", user.uid));
 
-  if (savedTasks) {
-    tasks = JSON.parse(savedTasks);
+  let tasks = [];
+  try {
+    const querySnapshot = await getDocs(q);
+    querySnapshot.forEach((doc) => {
+      tasks.push(doc.data());
+    });
+  } catch (error) {
+    console.error("Error loading tasks for statistics:", error);
+    tasks = [];
   }
 
   // Calculate statistics
@@ -84,7 +97,7 @@ window.toggleUserMenu = function () {
 window.handleSignOut = async function () {
   try {
     await signOut(auth);
-    window.location.href = "Login.html";
+    window.location.href = "index.html";
   } catch (error) {
     console.error("Error signing out:", error);
     alert("Error signing out. Please try again.");

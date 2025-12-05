@@ -430,6 +430,31 @@ body {
   margin-bottom: 12px;
 }
 
+.task-card-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.view-details-button {
+  background: none;
+  border: none;
+  font-size: 18px;
+  color: #3a7afe;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.view-details-button:hover {
+  background-color: #eff6ff;
+  transform: scale(1.1);
+}
+
 .task-title {
   font-size: 16px;
   font-weight: 600;
@@ -911,12 +936,12 @@ body {
   box-shadow: 0 0 0 3px rgba(58, 122, 254, 0.1);
 }
 
-.reminder-time-group {
+.date-time-group {
   display: flex;
   gap: 12px;
 }
 
-.reminder-time-group input {
+.date-time-group input {
   flex: 1;
 }
 
@@ -925,6 +950,43 @@ body {
   color: #6b7280;
   margin-top: 6px;
   font-style: italic;
+}
+
+/* Task Details Modal */
+.task-details-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.task-detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.task-detail-section label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.task-detail-value {
+  font-size: 16px;
+  color: #1f2937;
+  line-height: 1.6;
+}
+
+.task-status-completed {
+  color: #166534;
+  font-weight: 600;
+}
+
+.task-status-pending {
+  color: #d97706;
+  font-weight: 600;
 }
 
 /* Responsive Design for Dashboard */

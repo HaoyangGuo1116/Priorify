@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Priorify - Profile</title>
+    <link rel="stylesheet" href="style.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <!-- Header -->
+    <header class="dashboard-header">
+      <h1 class="dashboard-title">
+        <a href="Dashboard.html" style="text-decoration: none; color: inherit">
+          Priorify
+        </a>
+      </h1>
+      <div class="user-menu-container">
+        <button
+          class="user-menu-button"
+          id="userMenuButton"
+          onclick="toggleUserMenu()"
+        >
+          <span id="userName">User</span>
+          <span class="dropdown-arrow">▼</span>
+        </button>
+        <div class="user-menu-dropdown" id="userMenuDropdown">
+          <a href="Profile.html" class="menu-item">Profile</a>
+          <a href="#" class="menu-item" onclick="handleSignOut()">Sign out</a>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Profile Container -->
+    <div class="profile-container">
+      <div class="profile-card">
+        <div class="profile-header">
+          <h2>Profile</h2>
+          <button
+            class="back-button"
+            onclick="window.location.href='Dashboard.html'"
+          >
+            ← Back to Dashboard
+          </button>
+        </div>
+
+        <div class="profile-content">
+          <!-- User Info Section -->
+          <div class="profile-section">
+            <h3>Account Information</h3>
+            <div class="info-group">
+              <div class="info-item">
+                <label>Display Name</label>
+                <div class="info-value" id="displayName">Loading...</div>
+              </div>
+              <div class="info-item">
+                <label>Email</label>
+                <div class="info-value" id="userEmail">Loading...</div>
+              </div>
+              <div class="info-item">
+                <label>User ID</label>
+                <div class="info-value-small" id="userId">Loading...</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Statistics Section -->
+          <div class="profile-section">
+            <h3>Your Statistics</h3>
+            <div class="stats-grid">
+              <div class="stat-card">
+                <div class="stat-value" id="totalTasks">0</div>
+                <div class="stat-label">Total Tasks</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value" id="completedTasks">0</div>
+                <div class="stat-label">Completed</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value" id="pendingTasks">0</div>
+                <div class="stat-label">Pending</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value" id="completionRate">0%</div>
+                <div class="stat-label">Completion Rate</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Task Distribution Section -->
+          <div class="profile-section">
+            <h3>Task Distribution by Priority</h3>
+            <div class="priority-stats">
+              <div class="priority-stat-item">
+                <span class="priority-badge priority-high">High</span>
+                <span class="priority-count" id="highPriorityCount">0</span>
+              </div>
+              <div class="priority-stat-item">
+                <span class="priority-badge priority-medium">Medium</span>
+                <span class="priority-count" id="mediumPriorityCount">0</span>
+              </div>
+              <div class="priority-stat-item">
+                <span class="priority-badge priority-low">Low</span>
+                <span class="priority-count" id="lowPriorityCount">0</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Account Actions -->
+          <div class="profile-section">
+            <h3>Account Actions</h3>
+            <div class="action-buttons">
+              <button
+                class="secondary-button"
+                onclick="window.location.href='Dashboard.html'"
+              >
+                Go to Dashboard
+              </button>
+              <button class="secondary-button" onclick="handleSignOut()">
+                Sign Out
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="profile.js"></script>
+  </body>
+</html>

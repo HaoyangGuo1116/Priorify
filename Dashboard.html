@@ -138,6 +138,28 @@
           </div>
 
           <div class="form-group">
+            <label for="taskReminderTime">Reminder Time (optional)</label>
+            <div class="reminder-time-group">
+              <input
+                type="date"
+                id="taskReminderDate"
+                name="reminderDate"
+                placeholder="Date"
+              />
+              <input
+                type="time"
+                id="taskReminderTime"
+                name="reminderTime"
+                placeholder="Time"
+              />
+            </div>
+            <p class="form-hint">
+              If set, the task will be automatically added to the calendar at
+              the specified time.
+            </p>
+          </div>
+
+          <div class="form-group">
             <label for="taskPriority">Priority *</label>
             <select id="taskPriority" name="priority" required>
               <option value="Low">Low</option>

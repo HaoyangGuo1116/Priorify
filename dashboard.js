@@ -52,6 +52,19 @@ function saveTasks() {
 }
 
 function addTask(taskData) {
+  // Calculate scheduledDate from reminder time if provided
+  let scheduledDate = null;
+  if (taskData.reminderDate && taskData.reminderTime) {
+    const reminderDateTime = new Date(
+      `${taskData.reminderDate}T${taskData.reminderTime}`
+    );
+    scheduledDate = reminderDateTime.toISOString();
+  } else if (taskData.reminderDate) {
+    // If only date is provided, set to 9 AM by default
+    const reminderDateTime = new Date(`${taskData.reminderDate}T09:00`);
+    scheduledDate = reminderDateTime.toISOString();
+  }
+
   const task = {
     id: Date.now().toString(),
     title: taskData.title,
@@ -59,7 +72,14 @@ function addTask(taskData) {
     dueDate: taskData.dueDate,
     priority: taskData.priority,
     tag: taskData.tag || "",
-    scheduledDate: null, // For calendar scheduling
+    scheduledDate: scheduledDate,
+    reminderTime:
+      taskData.reminderDate && taskData.reminderTime
+        ? new Date(
+            `${taskData.reminderDate}T${taskData.reminderTime}`
+          ).toISOString()
+        : null,
+    completed: false,
     createdAt: new Date().toISOString(),
   };
   tasks.push(task);
@@ -80,6 +100,16 @@ function updateTaskSchedule(taskId, scheduledDate) {
   if (task) {
     task.scheduledDate = scheduledDate;
     saveTasks();
+    renderCalendar();
+  }
+}
+
+function toggleTaskComplete(taskId) {
+  const task = tasks.find((t) => t.id === taskId);
+  if (task) {
+    task.completed = !task.completed;
+    saveTasks();
+    renderTasks();
     renderCalendar();
   }
 }
@@ -108,8 +138,9 @@ function renderTasks() {
 
 function createTaskCard(task) {
   const card = document.createElement("div");
-  card.className = "task-card";
-  card.draggable = true;
+  const isCompleted = task.completed || false;
+  card.className = `task-card ${isCompleted ? "task-completed" : ""}`;
+  card.draggable = !isCompleted; // Disable dragging for completed tasks
   card.dataset.taskId = task.id;
 
   const priorityClass = `priority-${task.priority.toLowerCase()}`;
@@ -121,29 +152,52 @@ function createTaskCard(task) {
 
   card.innerHTML = `
     <div class="task-card-header">
-      <h3 class="task-title">${escapeHtml(task.title)}</h3>
+      <h3 class="task-title ${
+        isCompleted ? "completed-text" : ""
+      }">${escapeHtml(task.title)}</h3>
       <button class="delete-task" onclick="handleDeleteTask('${
         task.id
       }')" title="Delete task">×</button>
     </div>
     <div class="task-card-body">
       <div class="task-meta">
-        <span class="task-date">📅 ${formattedDate}</span>
+        <span class="task-date ${
+          isCompleted ? "completed-text" : ""
+        }">📅 ${formattedDate}</span>
         <span class="task-priority ${priorityClass}">${task.priority}</span>
       </div>
-      ${task.tag ? `<span class="task-tag">${escapeHtml(task.tag)}</span>` : ""}
+      ${
+        task.tag
+          ? `<span class="task-tag ${
+              isCompleted ? "completed-text" : ""
+            }">${escapeHtml(task.tag)}</span>`
+          : ""
+      }
     </div>
   `;
 
-  // Drag event handlers
-  card.addEventListener("dragstart", (e) => {
-    e.dataTransfer.setData("text/plain", task.id);
-    card.classList.add("dragging");
+  // Click to toggle completion
+  card.addEventListener("click", (e) => {
+    // Don't toggle if clicking on delete button
+    if (
+      !e.target.classList.contains("delete-task") &&
+      !e.target.closest(".delete-task")
+    ) {
+      toggleTaskComplete(task.id);
+    }
   });
 
-  card.addEventListener("dragend", () => {
-    card.classList.remove("dragging");
-  });
+  // Drag event handlers (only for incomplete tasks)
+  if (!isCompleted) {
+    card.addEventListener("dragstart", (e) => {
+      e.dataTransfer.setData("text/plain", task.id);
+      card.classList.add("dragging");
+    });
+
+    card.addEventListener("dragend", () => {
+      card.classList.remove("dragging");
+    });
+  }
 
   return card;
 }
@@ -275,9 +329,10 @@ function renderDayView(container) {
     dayGrid.appendChild(timeSlot);
   });
 
-  // Render tasks for this day
-  renderTasksInDayView(dayGrid, year, month, day);
   container.appendChild(dayGrid);
+
+  // Render tasks for this day after the grid is appended
+  renderTasksInDayView(dayGrid, year, month, day);
 }
 
 function createDayCell(year, month, day) {
@@ -323,9 +378,22 @@ function renderTasksInCell(cell, year, month, day) {
 
   scheduledTasks.forEach((task) => {
     const taskBlock = document.createElement("div");
-    taskBlock.className = `calendar-task priority-${task.priority.toLowerCase()}`;
+    const isCompleted = task.completed || false;
+    taskBlock.className = `calendar-task priority-${task.priority.toLowerCase()} ${
+      isCompleted ? "task-completed-calendar" : ""
+    }`;
     taskBlock.textContent = task.title;
-    taskBlock.title = `${task.title} - ${task.priority}`;
+    taskBlock.title = `${task.title} - ${task.priority}${
+      isCompleted ? " (Completed)" : ""
+    }`;
+    taskBlock.dataset.taskId = task.id;
+
+    // Add click handler to toggle completion
+    taskBlock.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleTaskComplete(task.id);
+    });
+
     cell.querySelector(".day-dropzone").appendChild(taskBlock);
   });
 }
@@ -346,14 +414,29 @@ function renderTasksInDayView(container, year, month, day) {
   scheduledTasks.forEach((task) => {
     const scheduled = new Date(task.scheduledDate);
     const hour = scheduled.getHours();
-    const timeSlot = container.querySelector(
-      `[data-hour="${hour}"] .day-cell-dropzone`
+    // Find the dropzone with matching hour attribute
+    const dropzone = container.querySelector(
+      `.day-cell-dropzone[data-hour="${hour}"]`
     );
-    if (timeSlot) {
+    if (dropzone) {
       const taskBlock = document.createElement("div");
-      taskBlock.className = `calendar-task priority-${task.priority.toLowerCase()}`;
+      const isCompleted = task.completed || false;
+      taskBlock.className = `calendar-task priority-${task.priority.toLowerCase()} ${
+        isCompleted ? "task-completed-calendar" : ""
+      }`;
       taskBlock.textContent = task.title;
-      timeSlot.appendChild(taskBlock);
+      taskBlock.title = `${task.title} - ${task.priority}${
+        isCompleted ? " (Completed)" : ""
+      }`;
+      taskBlock.dataset.taskId = task.id;
+
+      // Add click handler to toggle completion
+      taskBlock.addEventListener("click", (e) => {
+        e.stopPropagation();
+        toggleTaskComplete(task.id);
+      });
+
+      dropzone.appendChild(taskBlock);
     }
   });
 }
@@ -476,6 +559,13 @@ window.openCreateTaskModal = function () {
   // Set today as default due date
   const today = new Date().toISOString().split("T")[0];
   document.getElementById("taskDueDate").value = today;
+
+  // Set today as default reminder date and current time + 1 hour as default reminder time
+  document.getElementById("taskReminderDate").value = today;
+  const oneHourLater = new Date();
+  oneHourLater.setHours(oneHourLater.getHours() + 1);
+  const timeString = oneHourLater.toTimeString().slice(0, 5);
+  document.getElementById("taskReminderTime").value = timeString;
 };
 
 window.closeCreateTaskModal = function () {
@@ -492,6 +582,8 @@ window.handleCreateTask = function (event) {
     title: document.getElementById("taskTitle").value,
     description: document.getElementById("taskDescription").value,
     dueDate: document.getElementById("taskDueDate").value,
+    reminderDate: document.getElementById("taskReminderDate").value,
+    reminderTime: document.getElementById("taskReminderTime").value,
     priority: document.getElementById("taskPriority").value,
     tag: document.getElementById("taskTag").value,
   };
@@ -513,7 +605,7 @@ window.toggleUserMenu = function () {
 };
 
 window.handleProfile = function () {
-  alert("Profile feature coming soon!");
+  window.location.href = "Profile.html";
   document.getElementById("userMenuDropdown").classList.remove("show");
 };
 

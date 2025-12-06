@@ -4,6 +4,7 @@ import {
   createUserWithEmailAndPassword,
   updateProfile,
   onAuthStateChanged,
+  signInAnonymously,
 } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
 
 // Check if user is already authenticated
@@ -175,6 +176,38 @@ window.handleSignup = async function (event) {
         break;
       case "auth/weak-password":
         errorMessage = "Password is too weak. Please use a stronger password.";
+        break;
+      default:
+        errorMessage = error.message || "An error occurred. Please try again.";
+    }
+
+    showError(errorMessage);
+  }
+};
+
+// Handle guest (anonymous) login
+window.handleGuestLogin = async function () {
+  hideError();
+  const guestButton = document.getElementById("guestButton");
+
+  const originalText = guestButton.textContent;
+  guestButton.disabled = true;
+  guestButton.textContent = "Signing in as guest...";
+
+  try {
+    await signInAnonymously(auth);
+    // Success - redirect will happen via onAuthStateChanged
+    window.location.href = "Dashboard.html";
+  } catch (error) {
+    guestButton.disabled = false;
+    guestButton.textContent = originalText;
+    let errorMessage = "Failed to sign in as guest. Please try again.";
+
+    // Provide more specific error messages
+    switch (error.code) {
+      case "auth/operation-not-allowed":
+        errorMessage =
+          "Anonymous sign-in is not enabled. Please use email and password.";
         break;
       default:
         errorMessage = error.message || "An error occurred. Please try again.";

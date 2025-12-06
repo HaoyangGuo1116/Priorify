@@ -39,7 +39,10 @@ function checkAuth() {
       // Authenticated, set user info
       currentUser = user;
       const userNameElement = document.getElementById("userName");
-      userNameElement.textContent = user.displayName || user.email || "User";
+      // For anonymous users, show "Guest" instead of email
+      userNameElement.textContent = user.isAnonymous
+        ? "Guest"
+        : user.displayName || user.email || "User";
       // Load tasks from Firestore
       loadTasksFromFirestore();
     }

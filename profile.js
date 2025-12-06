@@ -36,10 +36,16 @@ function loadUserInfo(user) {
   const userIdElement = document.getElementById("userId");
   const userNameElement = document.getElementById("userName");
 
-  displayNameElement.textContent = user.displayName || "Not set";
-  userEmailElement.textContent = user.email || "N/A";
+  displayNameElement.textContent = user.isAnonymous
+    ? "Guest User"
+    : user.displayName || "Not set";
+  userEmailElement.textContent = user.isAnonymous
+    ? "Anonymous account"
+    : user.email || "N/A";
   userIdElement.textContent = user.uid || "N/A";
-  userNameElement.textContent = user.displayName || user.email || "User";
+  userNameElement.textContent = user.isAnonymous
+    ? "Guest"
+    : user.displayName || user.email || "User";
 }
 
 // Load user statistics

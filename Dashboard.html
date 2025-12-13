@@ -39,13 +39,25 @@
         <div class="panel-header">
           <h2>Tasks</h2>
           <div class="panel-actions">
+            <div class="sort-container">
+              <select
+                class="sort-select"
+                id="sortSelect"
+                onchange="changeSortType(this.value)"
+                title="Sort tasks"
+              >
+                <option value="none">Creation Order</option>
+                <option value="priority">By Priority</option>
+                <option value="ddl">By Due Date</option>
+              </select>
+            </div>
             <button
-              class="sort-button"
-              id="sortButton"
-              onclick="toggleSort()"
-              title="Sort by priority and due date"
+              class="filter-button"
+              id="filterButton"
+              onclick="openFilterModal()"
+              title="Smart filter tasks"
             >
-              <span id="sortIcon">↕️</span>
+              🔍 Smart Filter
             </button>
             <button class="primary-button" onclick="openCreateTaskModal()">
               Create Task
@@ -169,9 +181,10 @@
           <div class="form-group">
             <label for="taskPriority">Priority *</label>
             <select id="taskPriority" name="priority" required>
-              <option value="Low">Low</option>
-              <option value="Medium" selected>Medium</option>
               <option value="High">High</option>
+              <option value="Medium" selected>Medium</option>
+              <option value="Low">Low</option>
+              <option value="Unsure">Unsure</option>
             </select>
           </div>
 
@@ -222,6 +235,52 @@
             type="button"
             class="secondary-button"
             onclick="closeTaskDetailsModal()"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Filter Modal -->
+    <div
+      class="modal-overlay"
+      id="filterModalOverlay"
+      onclick="closeFilterModal()"
+    >
+      <div
+        class="modal-content filter-modal-content"
+        onclick="event.stopPropagation()"
+      >
+        <div class="modal-header">
+          <h2>Smart Filter</h2>
+          <button class="modal-close" onclick="closeFilterModal()">×</button>
+        </div>
+        <div class="filter-content">
+          <div class="form-group">
+            <label for="filterEnvironment">Current Environment</label>
+            <select id="filterEnvironment" class="filter-select">
+              <option value="">All</option>
+              <option value="home">Home</option>
+              <option value="outside">Outside</option>
+              <option value="office">Office</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="filterComputer">Has Computer</label>
+            <select id="filterComputer" class="filter-select">
+              <option value="">All</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button
+            type="button"
+            class="secondary-button"
+            onclick="closeFilterModal()"
           >
             Close
           </button>

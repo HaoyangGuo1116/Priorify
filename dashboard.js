@@ -21,7 +21,7 @@ let currentUser = null;
 let tasks = [];
 let currentDate = new Date();
 let currentView = "month";
-let sortByPriority = false;
+let sortType = "none"; // "none", "priority", "ddl"
 
 // Initialize dashboard
 document.addEventListener("DOMContentLoaded", () => {
@@ -251,20 +251,27 @@ function renderTasks() {
     return;
   }
 
-  // Only sort if sortByPriority is enabled, otherwise show in creation order
+  // Sort tasks based on selected sort type
   let sortedTasks;
 
-  if (sortByPriority) {
-    // Priority order: High = 3, Medium = 2, Low = 1
-    const priorityOrder = { High: 3, Medium: 2, Low: 1 };
+  if (sortType === "none") {
+    // Default: Show in creation order (by createdAt timestamp)
+    sortedTasks = [...tasks].sort((a, b) => {
+      // Sort by creation time (oldest first)
+      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return timeA - timeB;
+    });
+  } else if (sortType === "priority") {
+    // Sort by priority: High > Medium > Low > Unsure, then by due date, completed tasks last
+    const priorityOrder = { High: 4, Medium: 3, Low: 2, Unsure: 1 };
 
-    // Sort by completion status first (incomplete first), then priority, then due date
     sortedTasks = [...tasks].sort((a, b) => {
       // Completed tasks go to the end
       if (a.completed && !b.completed) return 1;
       if (!a.completed && b.completed) return -1;
 
-      // Both are either completed or incomplete, sort by priority and due date
+      // Both are either completed or incomplete, sort by priority, then due date
       const priorityDiff =
         (priorityOrder[b.priority] || 0) - (priorityOrder[a.priority] || 0);
 
@@ -274,7 +281,20 @@ function renderTasks() {
       }
 
       // If priorities are the same, sort by due date
-      // Parse dueDate correctly as local date (YYYY-MM-DD format)
+      const partsA = a.dueDate.split("-").map(Number);
+      const partsB = b.dueDate.split("-").map(Number);
+      const dateA = new Date(partsA[0], partsA[1] - 1, partsA[2]);
+      const dateB = new Date(partsB[0], partsB[1] - 1, partsB[2]);
+      return dateA - dateB;
+    });
+  } else if (sortType === "ddl") {
+    // Sort by due date (DDL), completed tasks last
+    sortedTasks = [...tasks].sort((a, b) => {
+      // Completed tasks go to the end
+      if (a.completed && !b.completed) return 1;
+      if (!a.completed && b.completed) return -1;
+
+      // Both are either completed or incomplete, sort by due date
       const partsA = a.dueDate.split("-").map(Number);
       const partsB = b.dueDate.split("-").map(Number);
       const dateA = new Date(partsA[0], partsA[1] - 1, partsA[2]);
@@ -282,9 +302,8 @@ function renderTasks() {
       return dateA - dateB;
     });
   } else {
-    // Default: Show in creation order (by createdAt timestamp)
+    // Fallback to creation order
     sortedTasks = [...tasks].sort((a, b) => {
-      // Sort by creation time (oldest first)
       const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
       const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
       return timeA - timeB;
@@ -775,26 +794,30 @@ function setupDragAndDrop() {
 }
 
 // Sort Functions
-window.toggleSort = function () {
-  sortByPriority = !sortByPriority;
+window.changeSortType = function (type) {
+  sortType = type;
 
-  // Update button icon to indicate sort state
-  const sortIcon = document.getElementById("sortIcon");
-  const sortButton = document.getElementById("sortButton");
-
-  if (sortByPriority) {
-    sortIcon.textContent = "🔝";
-    sortButton.title =
-      "Sort by priority and due date (active) - Click to sort by due date only";
-    sortButton.classList.add("active");
-  } else {
-    sortIcon.textContent = "↕️";
-    sortButton.title = "Sort by priority and due date - Click to enable";
-    sortButton.classList.remove("active");
+  // Update select element to reflect current selection
+  const sortSelect = document.getElementById("sortSelect");
+  if (sortSelect) {
+    sortSelect.value = type;
   }
 
   // Re-render tasks with new sort order
   renderTasks();
+};
+
+// Filter Functions
+window.openFilterModal = function () {
+  const modal = document.getElementById("filterModalOverlay");
+  modal.style.display = "flex";
+  document.body.style.overflow = "hidden";
+};
+
+window.closeFilterModal = function () {
+  const modal = document.getElementById("filterModalOverlay");
+  modal.style.display = "none";
+  document.body.style.overflow = "";
 };
 
 // Modal Functions

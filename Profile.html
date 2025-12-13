@@ -56,7 +56,43 @@
             <div class="info-group">
               <div class="info-item">
                 <label>Display Name</label>
-                <div class="info-value" id="displayName">Loading...</div>
+                <div class="display-name-container" id="displayNameContainer">
+                  <div class="display-name-display" id="displayNameDisplay">
+                    <span class="info-value" id="displayName">Loading...</span>
+                    <button
+                      class="edit-button"
+                      id="editDisplayNameBtn"
+                      onclick="enableEditDisplayName()"
+                      title="Edit"
+                    >
+                      ✏️
+                    </button>
+                  </div>
+                  <div
+                    class="display-name-edit"
+                    id="displayNameEdit"
+                    style="display: none"
+                  >
+                    <input
+                      type="text"
+                      id="displayNameInput"
+                      class="info-input"
+                      placeholder="Enter display name"
+                      maxlength="50"
+                    />
+                    <div class="edit-actions">
+                      <button class="save-button" onclick="saveDisplayName()">
+                        Save
+                      </button>
+                      <button
+                        class="cancel-button"
+                        onclick="cancelEditDisplayName()"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
               <div class="info-item">
                 <label>Email</label>

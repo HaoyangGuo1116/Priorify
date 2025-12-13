@@ -38,9 +38,19 @@
       <div class="task-panel">
         <div class="panel-header">
           <h2>Tasks</h2>
-          <button class="primary-button" onclick="openCreateTaskModal()">
-            Create Task
-          </button>
+          <div class="panel-actions">
+            <button
+              class="sort-button"
+              id="sortButton"
+              onclick="toggleSort()"
+              title="Sort by priority and due date"
+            >
+              <span id="sortIcon">↕️</span>
+            </button>
+            <button class="primary-button" onclick="openCreateTaskModal()">
+              Create Task
+            </button>
+          </div>
         </div>
         <div class="task-list" id="taskList">
           <!-- Tasks will be dynamically inserted here -->

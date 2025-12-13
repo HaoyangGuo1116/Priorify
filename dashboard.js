@@ -21,6 +21,7 @@ let currentUser = null;
 let tasks = [];
 let currentDate = new Date();
 let currentView = "month";
+let sortByPriority = false;
 
 // Initialize dashboard
 document.addEventListener("DOMContentLoaded", () => {
@@ -72,7 +73,11 @@ function loadTasksFromFirestore() {
 }
 
 async function saveTaskToFirestore(task) {
-  if (!currentUser) return null;
+  if (!currentUser) {
+    console.error("Failed to save task: user not logged in");
+    alert("Please log in before creating tasks.");
+    return null;
+  }
 
   try {
     const tasksRef = collection(db, "tasks");
@@ -82,11 +87,49 @@ async function saveTaskToFirestore(task) {
       createdAt: task.createdAt || serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
+
+    console.log("Saving task:", {
+      userId: currentUser.uid,
+      isAnonymous: currentUser.isAnonymous,
+      title: task.title,
+    });
+
     const docRef = await addDoc(tasksRef, taskData);
+    console.log("Task saved successfully, ID:", docRef.id);
     return docRef.id;
   } catch (error) {
     console.error("Error saving task to Firestore:", error);
-    alert("Failed to save task. Please try again.");
+    console.error("Error code:", error.code);
+    console.error("Error message:", error.message);
+    console.error(
+      "Current user:",
+      currentUser
+        ? {
+            uid: currentUser.uid,
+            email: currentUser.email,
+            isAnonymous: currentUser.isAnonymous,
+          }
+        : "Not logged in"
+    );
+
+    // Provide more specific error messages
+    let errorMessage = "Failed to create task. Please try again.";
+    if (error.code === "permission-denied") {
+      errorMessage =
+        "You do not have permission to create tasks.\n\nPossible reasons:\n1. Firestore security rules are not properly configured\n2. User is not properly logged in\n\nPlease check Firestore security rules in Firebase Console to ensure authenticated users can create tasks.\n\nCurrent user ID: " +
+        (currentUser?.uid || "Not logged in");
+    } else if (error.code === "unavailable") {
+      errorMessage =
+        "Network connection failed. Please check your network and try again.";
+    } else if (error.code === "unauthenticated") {
+      errorMessage = "User is not logged in. Please log in again.";
+      // Re-check authentication status
+      checkAuth();
+    } else if (error.message) {
+      errorMessage = `Failed to create task: ${error.message}`;
+    }
+
+    alert(errorMessage);
     return null;
   }
 }
@@ -121,18 +164,28 @@ async function deleteTaskFromFirestore(taskId) {
 async function addTask(taskData) {
   if (!currentUser) {
     alert("Please log in to create tasks.");
-    return;
+    return false;
   }
 
-  // Use the single date and time input for both due date and reminder/scheduled time
-  const dateTime = new Date(`${taskData.taskDate}T${taskData.taskTime}`);
+  // Parse date and time as local time (not UTC)
+  // taskData.taskDate is in format YYYY-MM-DD (local date)
+  // taskData.taskTime is in format HH:MM (local time)
+  const [year, month, day] = taskData.taskDate.split("-").map(Number);
+  const [hours, minutes] = taskData.taskTime.split(":").map(Number);
+
+  // Create date in local timezone
+  const dateTime = new Date(year, month - 1, day, hours, minutes);
+
+  // Store as ISO string (Firestore will store this correctly)
   const scheduledDate = dateTime.toISOString();
-  const dueDate = taskData.taskDate; // Store just the date for due date
+
+  // For dueDate, store as YYYY-MM-DD string to avoid timezone issues
+  const dueDate = taskData.taskDate;
 
   const task = {
     title: taskData.title,
     description: taskData.description || "",
-    dueDate: dueDate, // Due date (just the date part)
+    dueDate: dueDate, // Due date (YYYY-MM-DD format, date only)
     priority: taskData.priority,
     tag: taskData.tag || "",
     scheduledDate: scheduledDate, // Full date-time for calendar scheduling
@@ -142,7 +195,8 @@ async function addTask(taskData) {
   };
 
   // Save to Firestore - the real-time listener will update the UI
-  await saveTaskToFirestore(task);
+  const taskId = await saveTaskToFirestore(task);
+  return taskId !== null;
 }
 
 async function removeTask(taskId) {
@@ -155,8 +209,20 @@ async function removeTask(taskId) {
 async function updateTaskSchedule(taskId, scheduledDate) {
   if (!currentUser) return;
 
+  // Parse the scheduledDate (ISO string) to extract the date part for dueDate
+  // When new Date() is created from ISO string, getFullYear(), getMonth(), getDate()
+  // return values in local timezone, which is what we want
+  const scheduledDateObj = new Date(scheduledDate);
+
+  // Get local date components to match the dropped date
+  const year = scheduledDateObj.getFullYear();
+  const month = String(scheduledDateObj.getMonth() + 1).padStart(2, "0");
+  const day = String(scheduledDateObj.getDate()).padStart(2, "0");
+  const dueDate = `${year}-${month}-${day}`;
+
   // Update in Firestore - the real-time listener will update the UI
   await updateTaskInFirestore(taskId, {
+    dueDate: dueDate, // Update due date to match the dropped date
     scheduledDate: scheduledDate,
     reminderTime: scheduledDate,
   });
@@ -185,10 +251,45 @@ function renderTasks() {
     return;
   }
 
-  // Sort tasks by due date
-  const sortedTasks = [...tasks].sort((a, b) => {
-    return new Date(a.dueDate) - new Date(b.dueDate);
-  });
+  // Only sort if sortByPriority is enabled, otherwise show in creation order
+  let sortedTasks;
+
+  if (sortByPriority) {
+    // Priority order: High = 3, Medium = 2, Low = 1
+    const priorityOrder = { High: 3, Medium: 2, Low: 1 };
+
+    // Sort by completion status first (incomplete first), then priority, then due date
+    sortedTasks = [...tasks].sort((a, b) => {
+      // Completed tasks go to the end
+      if (a.completed && !b.completed) return 1;
+      if (!a.completed && b.completed) return -1;
+
+      // Both are either completed or incomplete, sort by priority and due date
+      const priorityDiff =
+        (priorityOrder[b.priority] || 0) - (priorityOrder[a.priority] || 0);
+
+      // If priorities are different, return the difference
+      if (priorityDiff !== 0) {
+        return priorityDiff;
+      }
+
+      // If priorities are the same, sort by due date
+      // Parse dueDate correctly as local date (YYYY-MM-DD format)
+      const partsA = a.dueDate.split("-").map(Number);
+      const partsB = b.dueDate.split("-").map(Number);
+      const dateA = new Date(partsA[0], partsA[1] - 1, partsA[2]);
+      const dateB = new Date(partsB[0], partsB[1] - 1, partsB[2]);
+      return dateA - dateB;
+    });
+  } else {
+    // Default: Show in creation order (by createdAt timestamp)
+    sortedTasks = [...tasks].sort((a, b) => {
+      // Sort by creation time (oldest first)
+      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return timeA - timeB;
+    });
+  }
 
   sortedTasks.forEach((task) => {
     const taskCard = createTaskCard(task);
@@ -204,7 +305,16 @@ function createTaskCard(task) {
   card.dataset.taskId = task.id;
 
   const priorityClass = `priority-${task.priority.toLowerCase()}`;
-  const dueDate = new Date(task.dueDate);
+
+  // Parse dueDate correctly - it's stored as YYYY-MM-DD string
+  // Parse as local date to avoid timezone issues
+  const dueDateParts = task.dueDate.split("-").map(Number);
+  const dueDate = new Date(
+    dueDateParts[0],
+    dueDateParts[1] - 1,
+    dueDateParts[2]
+  );
+
   const formattedDate = dueDate.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
@@ -226,9 +336,16 @@ function createTaskCard(task) {
     </div>
     <div class="task-card-body">
       <div class="task-meta">
-        <span class="task-date ${
-          isCompleted ? "completed-text" : ""
-        }">📅 ${formattedDate}</span>
+        <div class="task-date-container">
+          <span class="task-date ${
+            isCompleted ? "completed-text" : ""
+          }">📅 ${formattedDate}</span>
+          ${
+            !isCompleted
+              ? `<button class="edit-date-button" onclick="event.stopPropagation(); enableEditDueDate('${task.id}')" title="Edit due date">✏️</button>`
+              : ""
+          }
+        </div>
         <span class="task-priority ${priorityClass}">${task.priority}</span>
       </div>
       ${
@@ -442,10 +559,18 @@ function renderTasksInCell(cell, year, month, day) {
     const dateToCheck = task.reminderTime || task.scheduledDate;
     if (!dateToCheck) return false;
 
+    // Parse the scheduled date (it's stored as ISO string)
     const scheduled = new Date(dateToCheck);
 
+    // Convert to local date for comparison (remove time component)
+    const scheduledLocal = new Date(
+      scheduled.getFullYear(),
+      scheduled.getMonth(),
+      scheduled.getDate()
+    );
+
     // Use isSameDay function to ensure accurate date comparison
-    return isSameDay(scheduled, cellDate);
+    return isSameDay(scheduledLocal, cellDate);
   });
 
   scheduledTasks.forEach((task) => {
@@ -480,23 +605,30 @@ function renderTasksInDayView(container, year, month, day) {
     const dateToCheck = task.reminderTime || task.scheduledDate;
     if (!dateToCheck) return false;
 
-    // Create date object from task's scheduled/reminder time
+    // Parse the scheduled date (it's stored as ISO string)
     const scheduled = new Date(dateToCheck);
+
+    // Convert to local date for comparison (remove time component)
+    const scheduledLocal = new Date(
+      scheduled.getFullYear(),
+      scheduled.getMonth(),
+      scheduled.getDate()
+    );
 
     // Use isSameDay function to ensure accurate date comparison
     // This ensures tasks only show on the exact day they are scheduled
-    return isSameDay(scheduled, currentDayDate);
+    return isSameDay(scheduledLocal, currentDayDate);
   });
 
   // Position tasks by hour (rounded down to nearest hour)
   scheduledTasks.forEach((task) => {
     // Use reminderTime if available, otherwise use scheduledDate
     const dateToUse = task.reminderTime || task.scheduledDate;
+    // Parse the scheduled date (it's stored as ISO string)
     const scheduled = new Date(dateToUse);
 
-    // Down round to nearest hour (e.g., 4:50 -> 4, 4:30 -> 4, 4:59 -> 4)
-    // Since day view only shows hourly slots, we round down to the nearest hour
-    const hour = scheduled.getHours(); // Already an integer 0-23, ignores minutes
+    // Get local hour (not UTC) for proper display
+    const hour = scheduled.getHours(); // Local hour 0-23
     const roundedHour = Math.max(0, Math.min(23, hour));
 
     // Find the dropzone with matching hour attribute
@@ -511,10 +643,11 @@ function renderTasksInDayView(container, year, month, day) {
       }`;
       taskBlock.textContent = task.title;
 
-      // Show the actual reminder time in tooltip
+      // Show the actual reminder time in tooltip (in local time)
       const actualTime = scheduled.toLocaleTimeString("en-US", {
         hour: "2-digit",
         minute: "2-digit",
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       });
       taskBlock.title = `${task.title} - ${task.priority} - ${actualTime}${
         isCompleted ? " (Completed)" : ""
@@ -641,11 +774,44 @@ function setupDragAndDrop() {
   });
 }
 
+// Sort Functions
+window.toggleSort = function () {
+  sortByPriority = !sortByPriority;
+
+  // Update button icon to indicate sort state
+  const sortIcon = document.getElementById("sortIcon");
+  const sortButton = document.getElementById("sortButton");
+
+  if (sortByPriority) {
+    sortIcon.textContent = "🔝";
+    sortButton.title =
+      "Sort by priority and due date (active) - Click to sort by due date only";
+    sortButton.classList.add("active");
+  } else {
+    sortIcon.textContent = "↕️";
+    sortButton.title = "Sort by priority and due date - Click to enable";
+    sortButton.classList.remove("active");
+  }
+
+  // Re-render tasks with new sort order
+  renderTasks();
+};
+
 // Modal Functions
 window.openCreateTaskModal = function () {
   const modal = document.getElementById("modalOverlay");
   modal.style.display = "flex";
   document.body.style.overflow = "hidden";
+
+  // Reset form and button state
+  const form = document.getElementById("createTaskForm");
+  form.reset();
+
+  const submitButton = form.querySelector('button[type="submit"]');
+  if (submitButton) {
+    submitButton.disabled = false;
+    submitButton.textContent = "Save Task";
+  }
 
   // Set today as default date
   const today = new Date().toISOString().split("T")[0];
@@ -662,28 +828,225 @@ window.closeCreateTaskModal = function () {
   const modal = document.getElementById("modalOverlay");
   modal.style.display = "none";
   document.body.style.overflow = "";
-  document.getElementById("createTaskForm").reset();
+
+  // Reset form
+  const form = document.getElementById("createTaskForm");
+  form.reset();
+
+  // Reset submit button state (in case it was left in "Saving..." state)
+  const submitButton = form.querySelector('button[type="submit"]');
+  if (submitButton) {
+    submitButton.disabled = false;
+    submitButton.textContent = "Save Task";
+  }
 };
 
-window.handleCreateTask = function (event) {
+window.handleCreateTask = async function (event) {
   event.preventDefault();
 
   const formData = {
-    title: document.getElementById("taskTitle").value,
-    description: document.getElementById("taskDescription").value,
+    title: document.getElementById("taskTitle").value.trim(),
+    description: document.getElementById("taskDescription").value.trim(),
     taskDate: document.getElementById("taskDate").value,
     taskTime: document.getElementById("taskTime").value,
     priority: document.getElementById("taskPriority").value,
     tag: document.getElementById("taskTag").value,
   };
 
-  addTask(formData);
-  closeCreateTaskModal();
+  // Validate required fields
+  if (!formData.title) {
+    alert("Please enter a task title");
+    return;
+  }
+
+  if (!formData.taskDate || !formData.taskTime) {
+    alert("Please select a date and time");
+    return;
+  }
+
+  // Show loading state (optional: you can add a loading spinner)
+  const form = event.target;
+  const submitButton = form.querySelector('button[type="submit"]');
+  const originalText = submitButton ? submitButton.textContent : "";
+  if (submitButton) {
+    submitButton.disabled = true;
+    submitButton.textContent = "Saving...";
+  }
+
+  try {
+    const success = await addTask(formData);
+    if (success) {
+      // Reset button state before closing modal
+      if (submitButton) {
+        submitButton.disabled = false;
+        submitButton.textContent = originalText;
+      }
+      closeCreateTaskModal();
+    } else {
+      // Error already shown in saveTaskToFirestore, but keep modal open
+      if (submitButton) {
+        submitButton.disabled = false;
+        submitButton.textContent = originalText;
+      }
+    }
+  } catch (error) {
+    console.error("Error creating task:", error);
+    alert("Failed to create task. Please try again.");
+    if (submitButton) {
+      submitButton.disabled = false;
+      submitButton.textContent = originalText;
+    }
+  }
 };
 
 window.handleDeleteTask = function (taskId) {
   if (confirm("Are you sure you want to delete this task?")) {
     removeTask(taskId);
+  }
+};
+
+// Edit Due Date Functions
+window.enableEditDueDate = function (taskId) {
+  const task = tasks.find((t) => t.id === taskId);
+  if (!task || task.completed) return;
+
+  // Find the task card - use dataset.taskId attribute
+  const taskCard = document.querySelector(`[data-task-id="${taskId}"]`);
+  if (!taskCard) return;
+
+  const dateContainer = taskCard.querySelector(".task-date-container");
+  if (!dateContainer) return;
+
+  // Get current due date
+  const currentDueDate = task.dueDate; // YYYY-MM-DD format
+
+  // Create edit UI
+  const editHtml = `
+    <div class="edit-date-input-container">
+      <input
+        type="date"
+        class="edit-date-input"
+        id="editDueDateInput_${taskId}"
+        value="${currentDueDate}"
+        min="${new Date().toISOString().split("T")[0]}"
+      />
+      <div class="edit-date-actions">
+        <button class="save-date-button" onclick="event.stopPropagation(); saveDueDate('${taskId}')">✓</button>
+        <button class="cancel-date-button" onclick="event.stopPropagation(); cancelEditDueDate('${taskId}', '${currentDueDate}')">×</button>
+      </div>
+    </div>
+  `;
+
+  // Replace date display with edit input
+  dateContainer.innerHTML = editHtml;
+
+  // Focus on date input
+  setTimeout(() => {
+    const input = document.getElementById(`editDueDateInput_${taskId}`);
+    if (input) {
+      input.focus();
+      input.select();
+    }
+  }, 10);
+
+  // Handle Enter key
+  const input = document.getElementById(`editDueDateInput_${taskId}`);
+  if (input) {
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        saveDueDate(taskId);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        cancelEditDueDate(taskId, currentDueDate);
+      }
+    });
+  }
+};
+
+window.cancelEditDueDate = function (taskId, originalDate) {
+  const task = tasks.find((t) => t.id === taskId);
+  if (!task) return;
+
+  // Parse original date for display
+  const dateParts = originalDate.split("-").map(Number);
+  const dueDate = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
+  const formattedDate = dueDate.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+
+  // Restore original display - use dataset.taskId attribute
+  const taskCard = document.querySelector(`[data-task-id="${taskId}"]`);
+  if (!taskCard) return;
+
+  const dateContainer = taskCard.querySelector(".task-date-container");
+  if (dateContainer) {
+    const isCompleted = task.completed || false;
+    dateContainer.innerHTML = `
+      <span class="task-date ${
+        isCompleted ? "completed-text" : ""
+      }">📅 ${formattedDate}</span>
+      ${
+        !isCompleted
+          ? `<button class="edit-date-button" onclick="event.stopPropagation(); enableEditDueDate('${taskId}')" title="Edit due date">✏️</button>`
+          : ""
+      }
+    `;
+  }
+};
+
+window.saveDueDate = async function (taskId) {
+  const task = tasks.find((t) => t.id === taskId);
+  if (!task || task.completed) return;
+
+  const input = document.getElementById(`editDueDateInput_${taskId}`);
+  if (!input) return;
+
+  const newDueDate = input.value.trim();
+  if (!newDueDate) {
+    alert("Please select a date");
+    return;
+  }
+
+  // Disable input during save
+  input.disabled = true;
+
+  try {
+    // Parse new due date
+    const [year, month, day] = newDueDate.split("-").map(Number);
+    const newDateObj = new Date(year, month - 1, day);
+
+    // Update scheduledDate and reminderTime to match new date
+    // Keep the same time from existing scheduledDate if available
+    let newScheduledDate = null;
+    if (task.scheduledDate || task.reminderTime) {
+      const oldScheduled = new Date(task.scheduledDate || task.reminderTime);
+      // Preserve the time from old scheduledDate, update to new date
+      newScheduledDate = new Date(
+        year,
+        month - 1,
+        day,
+        oldScheduled.getHours(),
+        oldScheduled.getMinutes()
+      );
+    } else {
+      // If no scheduled time, set to noon of the new date
+      newScheduledDate = new Date(year, month - 1, day, 12, 0);
+    }
+
+    // Update task in Firestore
+    await updateTaskInFirestore(taskId, {
+      dueDate: newDueDate,
+      scheduledDate: newScheduledDate.toISOString(),
+      reminderTime: newScheduledDate.toISOString(),
+    });
+
+    // Re-render will happen automatically via real-time listener
+  } catch (error) {
+    console.error("Error updating due date:", error);
+    alert("Failed to update due date. Please try again.");
+    input.disabled = false;
   }
 };
 
@@ -698,8 +1061,13 @@ window.showTaskDetails = function (taskId) {
 
   titleElement.textContent = task.title;
 
-  // Format dates
-  const dueDate = new Date(task.dueDate);
+  // Format dates - parse dueDate correctly as local date
+  const dueDateParts = task.dueDate.split("-").map(Number);
+  const dueDate = new Date(
+    dueDateParts[0],
+    dueDateParts[1] - 1,
+    dueDateParts[2]
+  );
   const formattedDueDate = dueDate.toLocaleDateString("en-US", {
     year: "numeric",
     month: "long",
@@ -708,6 +1076,7 @@ window.showTaskDetails = function (taskId) {
 
   let scheduledInfo = "Not scheduled";
   if (task.reminderTime || task.scheduledDate) {
+    // scheduledDate is stored as ISO string, parse as is
     const scheduledDate = new Date(task.reminderTime || task.scheduledDate);
     scheduledInfo = scheduledDate.toLocaleString("en-US", {
       year: "numeric",
@@ -715,6 +1084,7 @@ window.showTaskDetails = function (taskId) {
       day: "numeric",
       hour: "2-digit",
       minute: "2-digit",
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     });
   }
 

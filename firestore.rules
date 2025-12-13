@@ -1,0 +1,49 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Tasks collection rules
+    match /tasks/{taskId} {
+      // Allow read if the user is authenticated and owns the task
+      allow read: if request.auth != null && 
+                     resource.data.userId == request.auth.uid;
+      
+      // Allow create if the user is authenticated and sets their own userId
+      allow create: if request.auth != null && 
+                       request.resource.data.userId == request.auth.uid;
+      
+      // Allow update if the user is authenticated and owns the task
+      allow update: if request.auth != null && 
+                       resource.data.userId == request.auth.uid &&
+                       request.resource.data.userId == request.auth.uid;
+      
+      // Allow delete if the user is authenticated and owns the task
+      allow delete: if request.auth != null && 
+                       resource.data.userId == request.auth.uid;
+    }
+    
+    // Users collection rules
+    match /users/{userId} {
+      // Allow read if the user is authenticated and viewing their own profile
+      allow read: if request.auth != null && userId == request.auth.uid;
+      
+      // Allow create if the user is authenticated and creating their own profile
+      allow create: if request.auth != null && 
+                       userId == request.auth.uid &&
+                       request.resource.data.uid == request.auth.uid;
+      
+      // Allow update if the user is authenticated and updating their own profile
+      allow update: if request.auth != null && 
+                       userId == request.auth.uid &&
+                       resource.data.uid == request.auth.uid &&
+                       request.resource.data.uid == request.auth.uid;
+      
+      // Users cannot delete their own profile document
+      allow delete: if false;
+    }
+    
+    // Default: deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
